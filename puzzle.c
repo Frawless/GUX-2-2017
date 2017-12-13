@@ -22,7 +22,7 @@ GtkWidget *buttons[15];
 int moves = 0;
 int emptyButton[2] = {3,3};
 
-GtkWidget *puzzleGrid, *statusbar;
+GtkWidget *puzzleGrid, *statusbar, *dialog, *window;
 guint statusbar_context_id;
 
 /* window callback prototypes */
@@ -30,28 +30,28 @@ void destroy_signal(GtkWidget *widget, gpointer data);
 gboolean delete_event(GtkWidget *widget, GdkEvent *event, gpointer data);
 
 /* file menu callbacks prototypes */
-void newGame(GtkWidget *widget, gpointer data);
+void new_game_signal(GtkWidget *widget, gpointer data);
 void quit_menu_item(GtkWidget *widget, gpointer data);
 
 /* help menu callback prototypes */
 void about_menu_item(GtkWidget *widget, gpointer data);
-
 void fill_grid_with_buttons(GtkWidget *grid);
 void startSignalCapturing();
 void doTurn(GtkWidget* button, gpointer user_data);
 bool winStatus();
 bool solvable(int array[]);
+bool shuffleGrid();
 
 int
 main(int argc, char *argv[])
 {
-	GtkWidget *window, *vbox, *menubar, *scrollw, *text_view;
+	GtkWidget *vbox, *menubar, *scrollw, *text_view;
 	GtkWidget *file, *help;
 	GtkWidget *filemenu, *helpmenu;
 	GtkWidget *b_new, *b_quit;
 	GtkWidget *b_about;
 	GtkAccelGroup *accel_group;
-  GtkTextBuffer *buffer;
+  // GtkTextBuffer *buffer;
 
 	/* initialize GTK+ libraries */
 	gtk_init(&argc, &argv);
@@ -83,7 +83,7 @@ main(int argc, char *argv[])
 	/* content */
 	scrollw = gtk_scrolled_window_new(NULL, NULL);
 	text_view = gtk_text_view_new();
-	buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(text_view));
+	// buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(text_view));
 	/* fill buffer ... */
 	gtk_container_add(GTK_CONTAINER(scrollw), text_view);
 
@@ -100,6 +100,7 @@ main(int argc, char *argv[])
 	/* start accelerator group */
 	accel_group = gtk_accel_group_new();
 	gtk_window_add_accel_group(GTK_WINDOW(window), accel_group);
+	gtk_window_set_resizable(GTK_WINDOW(window), false);
 
 	/* File pulldown menu */
 	file = gtk_menu_item_new_with_mnemonic("_Game");
@@ -109,14 +110,14 @@ main(int argc, char *argv[])
 
 	/* New button in File menu */
 #if GTK_MAJOR_VERSION >= 3
-	b_new = gtk_menu_item_new_with_mnemonic("_New");
+	b_new = gtk_menu_item_new_with_mnemonic("_New Game");
 #else
 	b_new = gtk_image_menu_item_new_from_stock(GTK_STOCK_NEW, accel_group);
 #endif
 	gtk_widget_add_accelerator(b_new, "activate", accel_group,
 		GDK_KEY_n, GDK_CONTROL_MASK, GTK_ACCEL_VISIBLE);
 	gtk_menu_shell_append(GTK_MENU_SHELL(filemenu), b_new);
-	g_signal_connect(G_OBJECT(b_new), "activate", G_CALLBACK(newGame), NULL);
+	g_signal_connect(G_OBJECT(b_new), "activate", G_CALLBACK(new_game_signal), NULL);
 
 #if GTK_MAJOR_VERSION >= 3
 	b_quit = gtk_menu_item_new_with_mnemonic("_Quit");
@@ -165,83 +166,97 @@ main(int argc, char *argv[])
 }
 
 
-
 // ######################################
 void fill_grid_with_buttons(GtkWidget *grid)
 {
   for (int i = 0; i < MAX_BUTTONS; i++) {
       buttons[i] = gtk_button_new_with_label(g_strdup_printf("%d", i+1));
-      gtk_widget_set_size_request(buttons[i], 80,80);
-
-      printf("%d#%d:%d\n",i, i%4, i/4);
+      gtk_widget_set_size_request(buttons[i], 100,100);
 
       gtk_grid_attach(GTK_GRID (grid), buttons[i], i%4, i/4, 1, 1);
   }
+	shuffleGrid();
 }
 
+// http://www.geeksforgeeks.org/check-instance-15-puzzle-solvable/
+void setSolvable(int array[])
+{
+  	int i,x,y;
+		if(emptyButton[0] + (emptyButton[1]) * 4 > 1)
+			i = emptyButton[0] + (emptyButton[1]) * 4 - 2;
+		else
+    	i = emptyButton[0] + (emptyButton[1]) * 4 + 2;
+    // g_object_ref (buttons[i]);
 
-void shuffleGrid()
+		gtk_container_child_get(GTK_CONTAINER(puzzleGrid),
+	                           buttons[array[i]],
+	                           "left-attach", &x,
+	                           "top-attach", &y, NULL);
+
+		gtk_container_remove(GTK_CONTAINER(puzzleGrid), buttons[array[i]]);
+		gtk_container_remove(GTK_CONTAINER(puzzleGrid), buttons[array[i+1]]);
+
+    gtk_grid_attach(GTK_GRID (puzzleGrid), buttons[array[i+1]], x, y, 1, 1);
+
+		if(x >= 3){
+			x = 0;
+			y++;
+		}
+		else
+			x++;
+
+		gtk_grid_attach(GTK_GRID (puzzleGrid), buttons[array[i]], x, y, 1, 1);
+}
+
+bool shuffleGrid()
 {
   srand ( time(NULL) );
 
-  int array[16] = {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15};
+  int array[GRID_SIZE] = {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,-1};
   for (int i = 0; i < GRID_SIZE; i++)
   {
     size_t j = i + rand() / (RAND_MAX / (GRID_SIZE - i) + 1);
     int t = array[j];
     array[j] = array[i];
     array[i] = t;
-    printf("%d\n", i);
-    if(i == 15)
+    if(i == MAX_BUTTONS)
       break;
     g_object_ref (buttons[i]);
     gtk_container_remove(GTK_CONTAINER(puzzleGrid), buttons[i]);
   }
 
   for (int i = 0; i < GRID_SIZE; i++) {
-
-    printf("%d\n", i);
-    printf("%d#%d:%d\n",array[i], array[i]%4, array[i]/4);
-
-      // buttons[i] = gtk_button_new_with_label(g_strdup_printf("%d", i+1));
-      // gtk_widget_set_size_request(buttons[i], 80,80);
-      //
-      // printf("%d#%d:%d\n",i, i%4, i/4);
-      //
-    if(array[i] == 15){
+    if(array[i] == -1){
       emptyButton[0] = i%4;
       emptyButton[1] = i/4;
       continue;
     }
     gtk_grid_attach(GTK_GRID (puzzleGrid), buttons[array[i]], i%4, i/4, 1, 1);
-    // gtk_grid_attach(GTK_GRID (puzzleGrid), buttons[i], i%4, i/4, 1, 1);
-    // gtk_grid_attach(GTK_GRID (puzzleGrid), buttons[i], i%4, i/4, 1, 1);
   }
 
+  if(!solvable(array))
+    setSolvable(array);
 
-  if(solvable(array))
-    printf("Resitelne\n");
-  else
-    printf("Neresitelne\n");
-  // gtk_grid_attach(GTK_GRID (puzzleGrid), buttons[1], 0, 0, 1, 1);
+  return true;
 }
 
 bool solvable(int array[])
 {
   int inv_count = 0;
-  for (int i = 0; i < MAX_BUTTONS; i++)
+  int tmpi, tmpj = -1;
+  for (int i = 0; i < GRID_SIZE; i++)
   {
       for (int j = i + 1; j < GRID_SIZE; j++)
       {
-          // count pairs(i, j) such that i appears
-          // before j, but i > j.
-          if (array[j] >= 1 && array[i] >= 1 && array[i] > array[j])
+          tmpi = array[i] + 1;
+          tmpj = array[j] + 1;
+          if (tmpj >= 1 && tmpi >= 1 && tmpi > tmpj)
               inv_count++;
       }
   }
   if((emptyButton[1]%2 == 0) && (inv_count%2 != 0))
     return true;
-  else if(inv_count%2 == 0)
+  else if((emptyButton[1]%2 != 0) && (inv_count%2 == 0))
     return true;
   else
     return false;
@@ -270,10 +285,6 @@ void doTurn(GtkWidget* button, gpointer user_data)
                            "left-attach", &x,
                            "top-attach", &y, NULL);
 
-  printf("x:%d - y:%d\n",x,y );
-  printf("eX:%d - eY:%d\n",emptyButton[0],emptyButton[1] );
-  printf("R:%d - R:%d\n",abs(x - emptyButton[0]),abs(y - emptyButton[1]) );
-
   int move[2] = {abs(x - emptyButton[0]), abs(y - emptyButton[1])};
 
   if(compareArray(move,MOVE_X,MOVE_Y))
@@ -287,10 +298,33 @@ void doTurn(GtkWidget* button, gpointer user_data)
   			g_strdup_printf("Moves: %d", moves));
   }
 
-  if(winStatus())
-    printf("Win!\n");
+  if(winStatus()){
+		dialog = gtk_dialog_new_with_buttons("You have win!", 	/* window title */
+  			GTK_WINDOW(window),	/* parent - transient for */
+  			GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT,
+  			"_New Game", GTK_RESPONSE_OK,
+  			"_Quit", GTK_RESPONSE_NO,
+  			NULL);
+  	/* set content to data */
+    gint result = gtk_dialog_run(GTK_DIALOG(dialog));
+    gtk_widget_destroy(dialog);
 
-  printf("Cliked on: %d:%d\n",x,y);
+    switch (result)
+      {
+        case GTK_RESPONSE_OK:
+          while(!shuffleGrid()){
+            continue;
+          }
+          moves = 0;
+          gtk_statusbar_push(GTK_STATUSBAR(statusbar), statusbar_context_id,
+              g_strdup_printf("Moves: %d", moves));
+           break;
+        default:
+           gtk_main_quit();
+           break;
+      }
+
+  }
 }
 
 
@@ -305,8 +339,8 @@ bool winStatus()
                                buttons[i],
                                "left-attach", &x,
                                "top-attach", &y, NULL);
-      if(i%4 == x && i/4 == y)
-        return true;
+      if(i%4 != x || i/4 != y)
+        return false;
     }
     return true;
   }
@@ -331,10 +365,15 @@ delete_event(GtkWidget *widget, GdkEvent *event, gpointer data)
 }
 
 /* edit a new file */
-void newGame(GtkWidget *widget, gpointer data)
+void new_game_signal(GtkWidget *widget, gpointer data)
 {
 	g_print("New button\n");
-  shuffleGrid();
+  while(!shuffleGrid()){
+    continue;
+  }
+  moves = 0;
+  gtk_statusbar_push(GTK_STATUSBAR(statusbar), statusbar_context_id,
+      g_strdup_printf("Moves: %d", moves));
 }
 
 /* quit editor */
@@ -349,13 +388,13 @@ void about_menu_item(GtkWidget *widget, gpointer data)
 {
 	static const gchar * const authors[] = {
 		"Petr Lampa <lampa@fit.vutbr.cz>",
-    "Jakub Stejskal <xstejs24[at]]stud.fit.vutbr.cz>",
+    "Jakub Stejskal <xstejs24[at]stud.fit.vutbr.cz>",
 		NULL
 	};
 	gtk_show_about_dialog (GTK_WINDOW(gtk_widget_get_toplevel(widget)),
 		"authors", authors,
 		"comments", "Gtk+ 15th Puzzle",
-		"copyright", "Copyright \xc2\xa9 2008 Petr Lampa, Jakub Stejskal",
+		"copyright", "Copyright \xc2\xa9 2017 Petr Lampa, Jakub Stejskal",
 		"version", "1.0",
 		"website", "http://www.fit.vutbr.cz",
 		"program-name", "Gtk+ 15th Puzzle",
